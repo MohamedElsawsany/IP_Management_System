@@ -381,67 +381,6 @@
             color: var(--primary-color);
         }
 
-        /* Pagination Styles */
-        .pagination-container {
-            display: flex;
-            justify-content: between;
-            align-items: center;
-            margin-top: 20px;
-            padding: 20px 0;
-            border-top: 2px solid var(--border-color);
-        }
-
-        .pagination-info {
-            font-size: 0.9rem;
-            color: var(--secondary-color);
-            font-weight: 500;
-        }
-
-        .pagination {
-            --bs-pagination-color: var(--primary-color);
-            --bs-pagination-border-color: var(--border-color);
-            --bs-pagination-hover-color: white;
-            --bs-pagination-hover-bg: var(--primary-color);
-            --bs-pagination-hover-border-color: var(--primary-color);
-            --bs-pagination-active-color: white;
-            --bs-pagination-active-bg: var(--primary-color);
-            --bs-pagination-active-border-color: var(--primary-color);
-            --bs-pagination-disabled-color: #6c757d;
-            --bs-pagination-disabled-bg: #f8f9fa;
-            --bs-pagination-disabled-border-color: var(--border-color);
-        }
-
-        .page-link {
-            border-radius: 8px !important;
-            margin: 0 2px;
-            font-weight: 500;
-            transition: all 0.3s ease;
-        }
-
-        .page-link:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
-        }
-
-        .pagination-controls {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            width: 100%;
-        }
-
-        .entries-select {
-            border-radius: 8px;
-            border: 2px solid var(--border-color);
-            padding: 8px 12px;
-            font-size: 0.9rem;
-        }
-
-        .entries-select:focus {
-            border-color: var(--primary-color);
-            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
-        }
-
         @media (max-width: 768px) {
             .header-card h1 {
                 font-size: 2rem;
@@ -455,15 +394,6 @@
             .quick-add {
                 bottom: 20px;
                 right: 20px;
-            }
-
-            .pagination-controls {
-                flex-direction: column;
-                gap: 15px;
-            }
-
-            .pagination {
-                margin: 0;
             }
         }
 
@@ -625,32 +555,6 @@
                             <p class="mt-3 text-muted">Loading data...</p>
                         </div>
                     </div>
-
-                    <!-- Pagination Controls -->
-                    <div class="pagination-container" id="paginationContainer" style="display: none;">
-                        <div class="pagination-controls">
-                            <div class="d-flex align-items-center">
-                                <span class="me-2">Show:</span>
-                                <select class="entries-select" id="entriesPerPage" onchange="changeEntriesPerPage()">
-                                    <option value="10">10</option>
-                                    <option value="25">25</option>
-                                    <option value="50">50</option>
-                                    <option value="100">100</option>
-                                </select>
-                                <span class="ms-2">entries</span>
-                            </div>
-                            
-                            <nav aria-label="Table pagination">
-                                <ul class="pagination mb-0" id="paginationNav">
-                                    <!-- Pagination buttons will be generated here -->
-                                </ul>
-                            </nav>
-                            
-                            <div class="pagination-info" id="paginationInfo">
-                                Showing 0 to 0 of 0 entries
-                            </div>
-                        </div>
-                    </div>
                 </div>
             </div>
         </div>
@@ -779,7 +683,6 @@
         let currentBranch = null;
         let currentBranchName = '';
         let allIPs = [];
-        let filteredIPs = [];
         let branches = [];
         let deviceTypes = [];
         let pingModal = null;
@@ -787,13 +690,6 @@
         let ipStatusCache = new Map(); // Cache for ping results
         let currentPingIP = null; // For retry functionality
         let bulkPingInProgress = false;
-
-        // Pagination variables
-        let currentPage = 1;
-        let entriesPerPage = 10;
-        let totalPages = 1;
-        let sortColumn = 1; // Default sort by IP address
-        let sortDirection = 'asc';
 
         // Initialize the application
         document.addEventListener('DOMContentLoaded', function() {
@@ -821,10 +717,7 @@
             document.getElementById('showAddFormBtn').addEventListener('click', showAddForm);
             document.getElementById('quickAddBtn').addEventListener('click', showAddForm);
             document.getElementById('cancelBtn').addEventListener('click', hideAddForm);
-            document.getElementById('searchInput').addEventListener('keyup', function(e) {
-                currentPage = 1; // Reset to first page when searching
-                filterAndPaginate();
-            });
+            document.getElementById('searchInput').addEventListener('keyup', filterTable);
             document.getElementById('ipAddress').addEventListener('input', updateIPRangeInfo);
         }
 
@@ -886,14 +779,10 @@
                     '<div class="loading-spinner"><div class="spinner-border text-primary" role="status"></div><p class="mt-3 text-muted">Loading data...</p></div>';
                 
                 allIPs = await apiCall(`ips?branch_id=${branchId}`);
-                filteredIPs = [...allIPs]; // Initialize filtered IPs
-                currentPage = 1; // Reset to first page
-                updatePagination();
-                displayIPTable();
+                displayIPTable(allIPs);
                 updateStats(allIPs);
                 document.getElementById('statsRow').style.display = 'flex';
                 document.getElementById('exportSection').style.display = 'block';
-                document.getElementById('paginationContainer').style.display = 'block';
                 
             } catch (error) {
                 console.error('Failed to load IPs:', error);
@@ -962,6 +851,7 @@
             const totalIPs = ips.length;
             const onlineIPs = ips.filter(ip => ipStatusCache.get(ip.ip_address) === 'online').length;
             const offlineIPs = ips.filter(ip => ipStatusCache.get(ip.ip_address) === 'offline').length;
+            const unknownIPs = totalIPs - onlineIPs - offlineIPs;
             const deviceTypesCount = new Set(ips.map(ip => ip.device_type_name)).size;
 
             document.getElementById('totalIPs').textContent = totalIPs;
@@ -970,251 +860,38 @@
             document.getElementById('deviceTypes').textContent = deviceTypesCount;
         }
 
-        // Filter and paginate data
-        function filterAndPaginate() {
-            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
-            
-            // Filter data
-            filteredIPs = allIPs.filter(ip => {
-                return (
-                    ip.ip_address.toLowerCase().includes(searchTerm) ||
-                    ip.device_name.toLowerCase().includes(searchTerm) ||
-                    ip.device_type_name.toLowerCase().includes(searchTerm) ||
-                    (ip.description && ip.description.toLowerCase().includes(searchTerm))
-                );
-            });
-
-            // Sort data
-            sortData();
-            
-            // Update pagination
-            updatePagination();
-            
-            // Display table
-            displayIPTable();
-        }
-
-        // Sort data
-        function sortData() {
-            filteredIPs.sort((a, b) => {
-                let aValue, bValue;
-                
-                switch(sortColumn) {
-                    case 0: // Status
-                        const aStatus = ipStatusCache.get(a.ip_address) || 'unknown';
-                        const bStatus = ipStatusCache.get(b.ip_address) || 'unknown';
-                        const statusOrder = { 'online': 0, 'testing': 1, 'offline': 2, 'unknown': 3 };
-                        aValue = statusOrder[aStatus];
-                        bValue = statusOrder[bStatus];
-                        break;
-                    case 1: // IP Address
-                        const aIP = a.ip_address.split('.').map(num => parseInt(num).toString().padStart(3, '0')).join('');
-                        const bIP = b.ip_address.split('.').map(num => parseInt(num).toString().padStart(3, '0')).join('');
-                        aValue = aIP;
-                        bValue = bIP;
-                        break;
-                    case 2: // Device Name
-                        aValue = a.device_name.toLowerCase();
-                        bValue = b.device_name.toLowerCase();
-                        break;
-                    case 3: // Device Type
-                        aValue = a.device_type_name.toLowerCase();
-                        bValue = b.device_type_name.toLowerCase();
-                        break;
-                    case 4: // Description
-                        aValue = (a.description || '').toLowerCase();
-                        bValue = (b.description || '').toLowerCase();
-                        break;
-                    default:
-                        return 0;
-                }
-                
-                if (sortDirection === 'asc') {
-                    return aValue < bValue ? -1 : aValue > bValue ? 1 : 0;
-                } else {
-                    return aValue > bValue ? -1 : aValue < bValue ? 1 : 0;
-                }
-            });
-        }
-
-        // Update pagination controls
-        function updatePagination() {
-            const totalEntries = filteredIPs.length;
-            totalPages = Math.ceil(totalEntries / entriesPerPage);
-            
-            // Ensure current page is within bounds
-            if (currentPage > totalPages && totalPages > 0) {
-                currentPage = totalPages;
-            } else if (currentPage < 1) {
-                currentPage = 1;
-            }
-
-            // Update pagination info
-            const startEntry = totalEntries > 0 ? ((currentPage - 1) * entriesPerPage) + 1 : 0;
-            const endEntry = Math.min(currentPage * entriesPerPage, totalEntries);
-            
-            document.getElementById('paginationInfo').textContent = 
-                `Showing ${startEntry} to ${endEntry} of ${totalEntries} entries`;
-
-            // Generate pagination buttons
-            generatePaginationButtons();
-        }
-
-        // Generate pagination buttons
-        function generatePaginationButtons() {
-            const paginationNav = document.getElementById('paginationNav');
-            paginationNav.innerHTML = '';
-
-            if (totalPages <= 1) {
-                return;
-            }
-
-            // First button
-            const firstLi = document.createElement('li');
-            firstLi.className = `page-item ${currentPage === 1 ? 'disabled' : ''}`;
-            firstLi.innerHTML = `<a class="page-link" href="#" onclick="goToPage(1)" title="First"><i class="fas fa-angle-double-left"></i></a>`;
-            paginationNav.appendChild(firstLi);
-
-            // Previous button
-            const prevLi = document.createElement('li');
-            prevLi.className = `page-item ${currentPage === 1 ? 'disabled' : ''}`;
-            prevLi.innerHTML = `<a class="page-link" href="#" onclick="goToPage(${currentPage - 1})" title="Previous"><i class="fas fa-angle-left"></i></a>`;
-            paginationNav.appendChild(prevLi);
-
-            // Calculate page numbers to show
-            let startPage = Math.max(1, currentPage - 2);
-            let endPage = Math.min(totalPages, currentPage + 2);
-
-            // Adjust range if we're near the beginning or end
-            if (currentPage <= 3) {
-                endPage = Math.min(5, totalPages);
-            }
-            if (currentPage > totalPages - 3) {
-                startPage = Math.max(1, totalPages - 4);
-            }
-
-            // Show ellipsis and first page if needed
-            if (startPage > 1) {
-                const li = document.createElement('li');
-                li.className = 'page-item';
-                li.innerHTML = `<a class="page-link" href="#" onclick="goToPage(1)">1</a>`;
-                paginationNav.appendChild(li);
-                
-                if (startPage > 2) {
-                    const ellipsisLi = document.createElement('li');
-                    ellipsisLi.className = 'page-item disabled';
-                    ellipsisLi.innerHTML = `<span class="page-link">...</span>`;
-                    paginationNav.appendChild(ellipsisLi);
-                }
-            }
-
-            // Page number buttons
-            for (let i = startPage; i <= endPage; i++) {
-                const li = document.createElement('li');
-                li.className = `page-item ${i === currentPage ? 'active' : ''}`;
-                li.innerHTML = `<a class="page-link" href="#" onclick="goToPage(${i})">${i}</a>`;
-                paginationNav.appendChild(li);
-            }
-
-            // Show ellipsis and last page if needed
-            if (endPage < totalPages) {
-                if (endPage < totalPages - 1) {
-                    const ellipsisLi = document.createElement('li');
-                    ellipsisLi.className = 'page-item disabled';
-                    ellipsisLi.innerHTML = `<span class="page-link">...</span>`;
-                    paginationNav.appendChild(ellipsisLi);
-                }
-                
-                const li = document.createElement('li');
-                li.className = 'page-item';
-                li.innerHTML = `<a class="page-link" href="#" onclick="goToPage(${totalPages})">${totalPages}</a>`;
-                paginationNav.appendChild(li);
-            }
-
-            // Next button
-            const nextLi = document.createElement('li');
-            nextLi.className = `page-item ${currentPage === totalPages ? 'disabled' : ''}`;
-            nextLi.innerHTML = `<a class="page-link" href="#" onclick="goToPage(${currentPage + 1})" title="Next"><i class="fas fa-angle-right"></i></a>`;
-            paginationNav.appendChild(nextLi);
-
-            // Last button
-            const lastLi = document.createElement('li');
-            lastLi.className = `page-item ${currentPage === totalPages ? 'disabled' : ''}`;
-            lastLi.innerHTML = `<a class="page-link" href="#" onclick="goToPage(${totalPages})" title="Last"><i class="fas fa-angle-double-right"></i></a>`;
-            paginationNav.appendChild(lastLi);
-        }
-
-        // Go to specific page
-        function goToPage(page) {
-            if (page < 1 || page > totalPages || page === currentPage) {
-                return;
-            }
-            currentPage = page;
-            displayIPTable();
-            generatePaginationButtons();
-        }
-
-        // Change entries per page
-        function changeEntriesPerPage() {
-            entriesPerPage = parseInt(document.getElementById('entriesPerPage').value);
-            currentPage = 1;
-            updatePagination();
-            displayIPTable();
-        }
-
-        // Display IP table with pagination
-        function displayIPTable() {
+        // Display IP table
+        function displayIPTable(ips) {
             const tableContent = document.getElementById('tableContent');
             
-            if (filteredIPs.length === 0) {
+            if (ips.length === 0) {
                 tableContent.innerHTML = `
                     <div class="text-center py-5">
                         <i class="fas fa-network-wired fa-3x text-muted mb-3"></i>
                         <h5 class="text-muted">No IP addresses found</h5>
-                        <p class="text-muted">${allIPs.length === 0 ? 'Click "Add New IP" to get started' : 'Try adjusting your search criteria'}</p>
+                        <p class="text-muted">Click "Add New IP" to get started</p>
                     </div>
                 `;
-                document.getElementById('paginationContainer').style.display = 'none';
                 return;
             }
-
-            // Calculate pagination
-            const startIndex = (currentPage - 1) * entriesPerPage;
-            const endIndex = startIndex + entriesPerPage;
-            const pageIPs = filteredIPs.slice(startIndex, endIndex);
 
             let tableHTML = `
                 <div class="table-responsive">
                     <table class="table table-hover" id="ipTable">
                         <thead>
                             <tr>
-                                <th onclick="sortTable(0)">
-                                    Status 
-                                    <i class="fas fa-sort${sortColumn === 0 ? (sortDirection === 'asc' ? '-up' : '-down') : ''}"></i>
-                                </th>
-                                <th onclick="sortTable(1)">
-                                    IP Address 
-                                    <i class="fas fa-sort${sortColumn === 1 ? (sortDirection === 'asc' ? '-up' : '-down') : ''}"></i>
-                                </th>
-                                <th onclick="sortTable(2)">
-                                    Device Name 
-                                    <i class="fas fa-sort${sortColumn === 2 ? (sortDirection === 'asc' ? '-up' : '-down') : ''}"></i>
-                                </th>
-                                <th onclick="sortTable(3)">
-                                    Device Type 
-                                    <i class="fas fa-sort${sortColumn === 3 ? (sortDirection === 'asc' ? '-up' : '-down') : ''}"></i>
-                                </th>
-                                <th onclick="sortTable(4)">
-                                    Description
-                                    <i class="fas fa-sort${sortColumn === 4 ? (sortDirection === 'asc' ? '-up' : '-down') : ''}"></i>
-                                </th>
+                                <th onclick="sortTable(0)">Status <i class="fas fa-sort"></i></th>
+                                <th onclick="sortTable(1)">IP Address <i class="fas fa-sort"></i></th>
+                                <th onclick="sortTable(2)">Device Name <i class="fas fa-sort"></i></th>
+                                <th onclick="sortTable(3)">Device Type <i class="fas fa-sort"></i></th>
+                                <th onclick="sortTable(4)">Description</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
             `;
 
-            pageIPs.forEach(ip => {
+            ips.forEach(ip => {
                 const cachedStatus = ipStatusCache.get(ip.ip_address);
                 let statusClass, statusText, statusIcon;
                 
@@ -1272,21 +949,6 @@
 
             tableHTML += '</tbody></table></div>';
             tableContent.innerHTML = tableHTML;
-            
-            // Update pagination info
-            updatePagination();
-        }
-
-        // Sort table
-        function sortTable(columnIndex) {
-            if (sortColumn === columnIndex) {
-                sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
-            } else {
-                sortColumn = columnIndex;
-                sortDirection = 'asc';
-            }
-            
-            filterAndPaginate();
         }
 
         // Update single IP status in table
@@ -1531,7 +1193,7 @@
             }
         }
 
-        // Ping all IPs function (updated to work with pagination)
+        // Ping all IPs function
         async function pingAllIPs() {
             if (bulkPingInProgress || allIPs.length === 0) return;
             
@@ -1600,11 +1262,68 @@
             }
             
             bulkPingInProgress = false;
-            
-            // Refresh the current page display to show updated statuses
-            displayIPTable();
-            
             showAlert(`Ping test completed for ${totalIPs} IP addresses`, 'success');
+        }
+
+        // Filter table
+        function filterTable() {
+            const input = document.getElementById('searchInput');
+            const filter = input.value.toLowerCase();
+            const table = document.getElementById('ipTable');
+            
+            if (!table) return;
+            
+            const rows = table.getElementsByTagName('tr');
+
+            for (let i = 1; i < rows.length; i++) {
+                const cells = rows[i].getElementsByTagName('td');
+                let found = false;
+                
+                for (let j = 0; j < cells.length - 1; j++) {
+                    if (cells[j].textContent.toLowerCase().indexOf(filter) > -1) {
+                        found = true;
+                        break;
+                    }
+                }
+                
+                rows[i].style.display = found ? '' : 'none';
+            }
+        }
+
+        // Sort table
+        function sortTable(columnIndex) {
+            const table = document.getElementById('ipTable');
+            if (!table) return;
+            
+            const tbody = table.tBodies[0];
+            const rows = Array.from(tbody.rows);
+            
+            rows.sort((a, b) => {
+                let aText, bText;
+                
+                if (columnIndex === 0) { // Status column
+                    const aStatus = a.cells[columnIndex].querySelector('.status-text').textContent;
+                    const bStatus = b.cells[columnIndex].querySelector('.status-text').textContent;
+                    const statusOrder = { 'Online': 0, 'Testing...': 1, 'Offline': 2, 'Unknown': 3 };
+                    return statusOrder[aStatus] - statusOrder[bStatus];
+                } else if (columnIndex === 1) { // IP address sorting
+                    const aIP = a.cells[columnIndex].textContent.trim().split('.').map(num => parseInt(num));
+                    const bIP = b.cells[columnIndex].textContent.trim().split('.').map(num => parseInt(num));
+                    
+                    for (let i = 0; i < 4; i++) {
+                        if (aIP[i] !== bIP[i]) {
+                            return aIP[i] - bIP[i];
+                        }
+                    }
+                    return 0;
+                } else {
+                    aText = a.cells[columnIndex].textContent.trim();
+                    bText = b.cells[columnIndex].textContent.trim();
+                    return aText.localeCompare(bText);
+                }
+            });
+            
+            rows.forEach(row => tbody.appendChild(row));
         }
 
         // Update IP range information
@@ -1640,9 +1359,9 @@
             rangeInfo.innerHTML = `<i class="fas fa-info-circle"></i> ${rangeType}`;
         }
 
-        // Export to CSV (updated to work with filtered data)
+        // Export to CSV
         function exportToCSV() {
-            if (filteredIPs.length === 0) {
+            if (allIPs.length === 0) {
                 showAlert('No data to export', 'warning');
                 return;
             }
@@ -1650,7 +1369,7 @@
             const headers = ['IP Address', 'Device Name', 'Device Type', 'Branch', 'Description', 'Status', 'Response Time'];
             const csvContent = [
                 headers.join(','),
-                ...filteredIPs.map(ip => {
+                ...allIPs.map(ip => {
                     const status = ipStatusCache.get(ip.ip_address) || 'unknown';
                     const responseTime = status === 'online' ? 'N/A' : ''; // You might want to store response times separately
                     return [
@@ -1678,12 +1397,11 @@
             showAlert('CSV exported successfully!', 'success');
         }
 
-        // Print report (updated to work with filtered data)
+        // Print report
         function printReport() {
-            const dataToExport = filteredIPs.length > 0 ? filteredIPs : allIPs;
-            const onlineCount = dataToExport.filter(ip => ipStatusCache.get(ip.ip_address) === 'online').length;
-            const offlineCount = dataToExport.filter(ip => ipStatusCache.get(ip.ip_address) === 'offline').length;
-            const unknownCount = dataToExport.length - onlineCount - offlineCount;
+            const onlineCount = allIPs.filter(ip => ipStatusCache.get(ip.ip_address) === 'online').length;
+            const offlineCount = allIPs.filter(ip => ipStatusCache.get(ip.ip_address) === 'offline').length;
+            const unknownCount = allIPs.length - onlineCount - offlineCount;
             
             const printWindow = window.open('', '_blank');
             const printContent = `
@@ -1762,12 +1480,11 @@
                         <h1>IP Management Report</h1>
                         <h2>${currentBranchName}</h2>
                         <p>Generated on: ${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString()}</p>
-                        ${filteredIPs.length !== allIPs.length ? `<p><em>Filtered Results: ${filteredIPs.length} of ${allIPs.length} total entries</em></p>` : ''}
                     </div>
                     
                     <div class="stats">
                         <div class="stat-box">
-                            <div class="stat-number">${dataToExport.length}</div>
+                            <div class="stat-number">${allIPs.length}</div>
                             <div>Total IPs</div>
                         </div>
                         <div class="stat-box">
@@ -1795,7 +1512,7 @@
                             </tr>
                         </thead>
                         <tbody>
-                            ${dataToExport.map(ip => {
+                            ${allIPs.map(ip => {
                                 const status = ipStatusCache.get(ip.ip_address) || 'unknown';
                                 const statusClass = status === 'online' ? 'online' : 
                                                   status === 'offline' ? 'offline' : 'unknown';
@@ -1874,7 +1591,7 @@
                         const refreshedIPs = await apiCall(`ips?branch_id=${currentBranch}`);
                         if (JSON.stringify(refreshedIPs) !== JSON.stringify(allIPs)) {
                             allIPs = refreshedIPs;
-                            filterAndPaginate();
+                            displayIPTable(allIPs);
                             updateStats(allIPs);
                         }
                     } catch (error) {
@@ -1883,45 +1600,6 @@
                 }
             }, 30000); // Refresh every 30 seconds
         }
-
-        // Keyboard navigation for pagination
-        document.addEventListener('keydown', function(e) {
-            if (document.getElementById('ipTableContainer').style.display !== 'none') {
-                switch(e.key) {
-                    case 'ArrowLeft':
-                        if (e.ctrlKey && currentPage > 1) {
-                            e.preventDefault();
-                            goToPage(currentPage - 1);
-                        }
-                        break;
-                    case 'ArrowRight':
-                        if (e.ctrlKey && currentPage < totalPages) {
-                            e.preventDefault();
-                            goToPage(currentPage + 1);
-                        }
-                        break;
-                    case 'Home':
-                        if (e.ctrlKey && currentPage !== 1) {
-                            e.preventDefault();
-                            goToPage(1);
-                        }
-                        break;
-                    case 'End':
-                        if (e.ctrlKey && currentPage !== totalPages) {
-                            e.preventDefault();
-                            goToPage(totalPages);
-                        }
-                        break;
-                }
-            }
-        });
-
-        // Prevent default link behavior for pagination
-        document.addEventListener('click', function(e) {
-            if (e.target.closest('.page-link')) {
-                e.preventDefault();
-            }
-        });
 
         // Start auto-refresh when page loads
         // Uncomment the next line if you want auto-refresh
