@@ -172,7 +172,6 @@
 
         .table thead th {
             border: none;
-            color: white;
             font-weight: 600;
             padding: 16px;
             cursor: pointer;
